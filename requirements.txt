@@ -1,0 +1,4 @@
+tkinter
+requests
+pygame
+opencv-python
