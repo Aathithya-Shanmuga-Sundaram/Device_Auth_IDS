@@ -1,5 +1,9 @@
 # Intrusion Protection System 🔐 
 
+[![Python 3.6+](https://img.shields.io/badge/Python-3.6%2B-blue.svg)](https://www.python.org/)
+[![Three Dependencies](https://img.shields.io/badge/Dependencies-3-green.svg)](https://www.python.org/)
+[![Cybersecurity Lab](https://img.shields.io/badge/%23MakeEveryoneCyberSafe-orange.svg)](https://github.com/Aathithya-Shanmuga-Sundaram)
+
 This project is a standalone, full-screen desktop security interface designed to simulate a **device lockdown system**. When unauthorized users attempt to unlock the device, the system triggers alerts, captures photos using the webcam, and sends them to the device owner via Telegram.
 
 ---
