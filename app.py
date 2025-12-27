@@ -7,13 +7,14 @@ import cv2
 import os
 import random
 
+# --- CONFIGURATION ---
 CORRECT_PASSWORD = "1234" 
-TELEGRAM_BOT_TOKEN = "[YOUR BOT TOKEN HERE]" 
-TELEGRAM_CHAT_ID = "[YOUR CHAT ID HERE]"  
+TELEGRAM_BOT_TOKEN = "YOUR_BOT_TOKEN_HERE" 
+TELEGRAM_CHAT_ID = "YOUR_CHAT_ID_HERE"  
 SIREN_FILE = "siren.mp3" 
 SNAPSHOT_FILE = "intruder.jpg"
 MAX_ATTEMPTS = 3
-POLL_INTERVAL = 2
+POLL_INTERVAL = 1
 
 def send_telegram_message(text: str):
     url = (
@@ -44,6 +45,7 @@ def capture_intruder_photo(path: str = SNAPSHOT_FILE):
             print("Webcam not available. Skipping photo capture.")
             return None
         
+        # Warm up camera
         for _ in range(30):
             cam.read() 
         
@@ -69,6 +71,11 @@ class AuthApp:
 
     def __init__(self, root: tk.Tk):
         self.root = root
+        
+        # --- TIMESTAMP FIX: Record exactly when the app started ---
+        self.app_start_time = time.time()
+        # ----------------------------------------------------------
+
         self.root.title("Device Protection Protocol")
         self.root.attributes("-fullscreen", True)
         self.root.attributes("-topmost", True)
@@ -83,6 +90,11 @@ class AuthApp:
         self.deactivate_mode = False
         self.siren_playing = False
         self.enhance_protection_active = False
+
+        # --- OTP Variables ---
+        self.otp_mode = False
+        self.current_otp = None
+        # ---------------------
 
         self.matrix_drops = []
         
@@ -111,7 +123,7 @@ class AuthApp:
             highlightbackground="#00F0B8", highlightcolor="#00F0B8", highlightthickness=2, bd=0
         )
         self.main_card.place(
-            relx=0.5, rely=0.5, anchor="center", relwidth=0.4, relheight=0.6 # Reduced height to 0.6
+            relx=0.5, rely=0.5, anchor="center", relwidth=0.4, relheight=0.6
         )
 
         self.title_label = tk.Label(
@@ -184,9 +196,7 @@ class AuthApp:
         )
         self.submit_btn.pack(pady=(5, 15))
         
-        # --- Removed Footer (Remote Commands) and Watermark from Card ---
-        
-        # Custom temporary notification banner (Replaces messagebox)
+        # Custom temporary notification banner
         self.temp_status_label = tk.Label(
             self.root,
             text="",
@@ -198,13 +208,13 @@ class AuthApp:
         )
         self.temp_status_label.place(relx=0.5, rely=0.9, anchor="center", relwidth=0.9)
         
-        # Global Watermark Label (Moved outside main_card)
+        # Global Watermark Label
         self.watermark_label_global = tk.Label(
             self.root,
             text="// Developed by Aathithya Shanmuga Sundaram #MakeEveryoneCyberSafe //",
             font=("Consolas", 8),
-            bg="#111624", # Match root background
-            fg="#3A4A5D", # Subtle color
+            bg="#111624",
+            fg="#3A4A5D",
             justify="center",
         )
         self.watermark_label_global.place(relx=0.5, rely=0.97, anchor="center") 
@@ -273,9 +283,20 @@ class AuthApp:
         entered = self.entry.get()
         self.entry.delete(0, tk.END)
 
-        if entered == CORRECT_PASSWORD:
+        # --- OTP / PASSWORD LOGIC START ---
+        is_correct = False
+        if self.otp_mode:
+            if entered == self.current_otp:
+                is_correct = True
+        else:
+            if entered == CORRECT_PASSWORD:
+                is_correct = True
+        # ----------------------------------
+
+        if is_correct:
             self.locked = False
-            self.success_exit("ACCESS GRANTED: Credentials verified. Protocol terminating...")
+            self.otp_mode = False
+            self.success_exit("ACCESS GRANTED: Verified. Protocol terminating...")
             return
 
         if self.locked:
@@ -284,7 +305,11 @@ class AuthApp:
 
         self.attempts_left -= 1
         self.attempts_label.configure(text=f"// ATTEMPTS LEFT: {self.attempts_left} //")
-        self.status_label.configure(text="INCORRECT PASSWORD. ALERT LEVEL RAISED.", fg="#FF5C5C")
+        
+        # Display specific error message
+        msg = "INCORRECT OTP." if self.otp_mode else "INCORRECT PASSWORD."
+        self.status_label.configure(text=f"{msg} ALERT LEVEL RAISED.", fg="#FF5C5C")
+        
         self.flash_red()
 
         if self.attempts_left <= 0:
@@ -292,6 +317,8 @@ class AuthApp:
 
     def trigger_lockdown(self):
         self.locked = True
+        self.otp_mode = False # Reset OTP mode on full lockdown
+        self.current_otp = None
         self.remove_input()
         
         self.title_label.configure(text="!! INTRUSION ALERT !!", fg="#FF5C5C")
@@ -311,13 +338,12 @@ class AuthApp:
             if path and os.path.exists(path):
                 send_telegram_photo(path)
             
-            # Note: The remote commands were removed from the UI but are still listed here for reference
             send_telegram_message(
                 "Owner Actions:\n"
-                "1. 'Deactivate protection' (Stops alarm, restores input for 1 attempt).\n"
-                "2. 'Disable password' (Unlocks device IMMEDIATELY, closing the app).\n"
-                "3. 'Start siren' / 'Stop siren' (Manual alarm control).\n"
-                "4. 'Enhance protection' (Starts visual 'Matrix' alert)."
+                "1. 'Deactivate protection' (Generates OTP for unlocking).\n"
+                "2. 'Disable password' (Unlocks device IMMEDIATELY).\n"
+                "3. 'Start siren' / 'Stop siren'.\n"
+                "4. 'Enhance protection' (Matrix visual alert)."
             )
 
         threading.Thread(target=capture_and_send, daemon=True).start()
@@ -331,22 +357,34 @@ class AuthApp:
         self.entry.configure(state="normal")
         self.submit_btn.configure(state="normal", cursor="hand2", bg="#00A87C")
         self.entry.focus_set()
-        self.status_label.configure(text="ONE-TIME PASSWORD ENTRY ACTIVE.", fg="#00F0B8")
+        
+        # Adjust message based on mode
+        if self.otp_mode:
+             self.status_label.configure(text="ENTER TELEGRAM OTP TO UNLOCK.", fg="#00F0B8")
+        else:
+             self.status_label.configure(text="ONE-TIME ENTRY ACTIVE.", fg="#00F0B8")
+             
         self.attempts_left = 1 
         self.attempts_label.configure(text=f"// ATTEMPTS LEFT: {self.attempts_left} //")
 
     def request_deactivation(self):
-        self.deactivate_mode = True
+        # Generate OTP
+        self.current_otp = str(random.randint(100000, 999999))
+        self.otp_mode = True
         self.locked = False
+        
         self.stop_siren()
         self.stop_fake_popups()
         
-        self.title_label.configure(text="REMOTE VERIFICATION", fg="#00F0B8")
+        self.title_label.configure(text="OTP VERIFICATION", fg="#00F0B8")
         self.subtitle_label.configure(
-            text="Protocol deactivation confirmed. Enter password once to unlock.", fg="#B0B9C6"
+            text="SECURITY OVERRIDE INITIATED.\nEnter the 6-digit OTP sent to the owner's Telegram.", 
+            fg="#B0B9C6"
         )
+        
         self.restore_input()
-        send_telegram_message("Device input restored. Owner must enter password to fully unlock.")
+        
+        send_telegram_message(f"⚠️ DEACTIVATION REQUESTED.\n\nYour One-Time Password (OTP) is: {self.current_otp}")
     
     def start_fake_popups(self):
         if not self.locked: 
@@ -390,7 +428,7 @@ class AuthApp:
                     
                     if j > 1:
                          self.matrix_canvas.create_text(x, tail_y, text=tail_char, fill=color, 
-                                                       font=("Consolas", self.FONT_SIZE), anchor="n")
+                                                        font=("Consolas", self.FONT_SIZE), anchor="n")
 
             y += speed * 2 
             if y > self.root.winfo_screenheight():
@@ -424,9 +462,15 @@ def poll_telegram(app: AuthApp, root: tk.Tk):
                 if not msg:
                     continue
 
+                # 1. Ignore Old Messages
+                msg_date = msg.get("date", 0)
+                if msg_date < app.app_start_time:
+                    continue 
+
                 chat_id = msg["chat"]["id"]
                 text = msg.get("text", "").strip().lower()
 
+                # 2. Authorization Check
                 is_authorized = False
                 if isinstance(target_chat_id, int):
                     is_authorized = (chat_id == target_chat_id)
@@ -436,9 +480,22 @@ def poll_telegram(app: AuthApp, root: tk.Tk):
                 if not is_authorized:
                     continue
 
+                # --- 3. SECURITY GATEKEEPER: IGNORE IF NOT LOCKED ---
+                # This ensures commands only work if there is an active intrusion
+                valid_commands = [
+                    "deactivate protection", "enhance protection", 
+                    "stop enhance protection", "disable password", 
+                    "start siren", "stop siren"
+                ]
+                
+                if text in valid_commands and not app.locked:
+                    # Optional: Uncomment the next line if you want the bot to reply "Not Locked"
+                    # send_telegram_message("⛔ Command Ignored: System is not in lockdown mode.")
+                    continue
+                # ----------------------------------------------------
+
                 if text == "deactivate protection":
                     root.after(0, app.request_deactivation)
-                    send_telegram_message("Deactivation sequence initiated.")
 
                 elif text == "enhance protection":
                     root.after(0, app.start_fake_popups)
@@ -450,7 +507,7 @@ def poll_telegram(app: AuthApp, root: tk.Tk):
                 
                 elif text == "disable password":
                     root.after(0, app.remote_immediate_unlock)
-                    send_telegram_message("Immediate Remote Unlock initiated. The protected device UI should now be closed.")
+                    send_telegram_message("Immediate Remote Unlock initiated.")
                     
                 elif text == "start siren":
                     root.after(0, app.start_siren)
